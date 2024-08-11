@@ -10,6 +10,8 @@
 #include "xapo.h"
 #include <assert.h>
 
+#include "testEffect.h"
+
 #include <math.h>
 #include <cstdio>
 #include <thread>
@@ -22,7 +24,7 @@
 #define fourccDPDS 'sdpd'
 
 float dt = 0.0f;
-float volume = 0.1f;
+float volume = 0.3f;
 
 HRESULT FindChunk(HANDLE hFile, DWORD fourcc, DWORD& dwChunkSize, DWORD& dwChunkDataPosition)
 {
@@ -90,111 +92,114 @@ HRESULT ReadChunkData(HANDLE hFile, void* buffer, DWORD buffersize, DWORD buffer
     return hr;
 }
 
-static XAPO_REGISTRATION_PROPERTIES reg = {
-    .clsid = 0,                                          // COM class ID, used with CoCreate
-    .FriendlyName = L"MyEffect",                    // friendly name unicode string
-    .CopyrightInfo = L"Meddl",                          // copyright information unicode string
-    .MajorVersion = 1,                                   // major version
-    .MinorVersion = 0,                                   // minor version
-    .Flags = 0,                                          // XAPO property flags, describes supported input/output configuration
-    .MinInputBufferCount = 0,                            // minimum number of input buffers required for processing, can be 0
-    .MaxInputBufferCount = 2,                            // maximum number of input buffers supported for processing, must be >= MinInputBufferCount
-    .MinOutputBufferCount = 0,                           // minimum number of output buffers required for processing, can be 0, must match MinInputBufferCount when XAPO_FLAG_BUFFERCOUNT_MUST_MATCH used
-    .MaxOutputBufferCount = 2                           // maximum number of output buffers supported for processing, must be >= MinOutputBufferCount, must match MaxInputBufferCount when XAPO_FLAG_BUFFERCOUNT_MUST_MATCH used
-};
+//static XAPO_REGISTRATION_PROPERTIES reg = {
+//    .clsid = 0,                                          // COM class ID, used with CoCreate
+//    .FriendlyName = L"MyEffect",                    // friendly name unicode string
+//    .CopyrightInfo = L"Meddl",                          // copyright information unicode string
+//    .MajorVersion = 1,                                   // major version
+//    .MinorVersion = 0,                                   // minor version
+//    .Flags = 0,                                          // XAPO property flags, describes supported input/output configuration
+//    .MinInputBufferCount = 0,                            // minimum number of input buffers required for processing, can be 0
+//    .MaxInputBufferCount = 2,                            // maximum number of input buffers supported for processing, must be >= MinInputBufferCount
+//    .MinOutputBufferCount = 0,                           // minimum number of output buffers required for processing, can be 0, must match MinInputBufferCount when XAPO_FLAG_BUFFERCOUNT_MUST_MATCH used
+//    .MaxOutputBufferCount = 2                           // maximum number of output buffers supported for processing, must be >= MinOutputBufferCount, must match MaxInputBufferCount when XAPO_FLAG_BUFFERCOUNT_MUST_MATCH used
+//};
 
-class MyEffect : public CXAPOBase
-{
-    WORD m_uChannels, m_uBytesPerSample;
-
-public:
-    MyEffect()
-        : CXAPOBase(&reg)
-    {};
-
-    STDMETHOD(LockForProcess) (UINT32 InputLockedParameterCount,
-        const XAPO_LOCKFORPROCESS_BUFFER_PARAMETERS* pInputLockedParameters,
-        UINT32 OutputLockedParameterCount,
-        const XAPO_LOCKFORPROCESS_BUFFER_PARAMETERS* pOutputLockedParameters)
-    {
-        assert(!IsLocked());
-        assert(InputLockedParameterCount == 1);
-        assert(OutputLockedParameterCount == 1);
-        assert(pInputLockedParameters != NULL);
-        assert(pOutputLockedParameters != NULL);
-        assert(pInputLockedParameters[0].pFormat != NULL);
-        assert(pOutputLockedParameters[0].pFormat != NULL);
-
-
-        m_uChannels = pInputLockedParameters[0].pFormat->nChannels;
-        m_uBytesPerSample = (pInputLockedParameters[0].pFormat->wBitsPerSample >> 3);
-
-        return CXAPOBase::LockForProcess(
-            InputLockedParameterCount,
-            pInputLockedParameters,
-            OutputLockedParameterCount,
-            pOutputLockedParameters);
-    }
-    STDMETHOD_(void, Process)(UINT32 InputProcessParameterCount,
-        const XAPO_PROCESS_BUFFER_PARAMETERS* pInputProcessParameters,
-        UINT32 OutputProcessParameterCount,
-        XAPO_PROCESS_BUFFER_PARAMETERS* pOutputProcessParameters,
-        BOOL IsEnabled)
-    {
-        assert(IsLocked());
-        assert(InputProcessParameterCount == 1);
-        assert(OutputProcessParameterCount == 1);
-        assert(NULL != pInputProcessParameters);
-        assert(NULL != pOutputProcessParameters);
-
-
-        XAPO_BUFFER_FLAGS inFlags = pInputProcessParameters[0].BufferFlags;
-        XAPO_BUFFER_FLAGS outFlags = pOutputProcessParameters[0].BufferFlags;
-
-        // assert buffer flags are legitimate
-        assert(inFlags == XAPO_BUFFER_VALID || inFlags == XAPO_BUFFER_SILENT);
-        assert(outFlags == XAPO_BUFFER_VALID || outFlags == XAPO_BUFFER_SILENT);
-
-        // check input APO_BUFFER_FLAGS
-        switch (inFlags)
-        {
-        case XAPO_BUFFER_VALID:
-        {
-            void* pvSrc = pInputProcessParameters[0].pBuffer;
-            assert(pvSrc != NULL);
-
-
-            for (int index = 0; index < pInputProcessParameters[0].ValidFrameCount * m_uChannels; ++index)
-            {
-                if (index % 2 == 0)
-                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (sinf(dt) + 1.0f);
-                else
-                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (cosf(dt) + 1.0f);
-            }
-            // printf("%d\n", );
-
-            void* pvDst = pOutputProcessParameters[0].pBuffer;
-            assert(pvDst != NULL);
-
-            memcpy(pvDst, pvSrc, pInputProcessParameters[0].ValidFrameCount * m_uChannels * m_uBytesPerSample);
-            break;
-        }
-
-        case XAPO_BUFFER_SILENT:
-        {
-            // All that needs to be done for this case is setting the
-            // output buffer flag to XAPO_BUFFER_SILENT which is done below.
-            break;
-        }
-
-        }
-
-        // set destination valid frame count, and buffer flags
-        pOutputProcessParameters[0].ValidFrameCount = pInputProcessParameters[0].ValidFrameCount; // set destination frame count same as source
-        pOutputProcessParameters[0].BufferFlags = pInputProcessParameters[0].BufferFlags;     // set destination buffer flags same as source
-
-    }
-};
+//class MyEffect : public CXAPOBase
+//{
+//    WORD m_uChannels, m_uBytesPerSample;
+//
+//public:
+//    MyEffect()
+//        : CXAPOBase(&reg)
+//    {};
+//
+//    STDMETHOD(LockForProcess) (UINT32 InputLockedParameterCount,
+//        const XAPO_LOCKFORPROCESS_BUFFER_PARAMETERS* pInputLockedParameters,
+//        UINT32 OutputLockedParameterCount,
+//        const XAPO_LOCKFORPROCESS_BUFFER_PARAMETERS* pOutputLockedParameters)
+//    {
+//        assert(!IsLocked());
+//        assert(InputLockedParameterCount == 1);
+//        assert(OutputLockedParameterCount == 1);
+//        assert(pInputLockedParameters != NULL);
+//        assert(pOutputLockedParameters != NULL);
+//        assert(pInputLockedParameters[0].pFormat != NULL);
+//        assert(pOutputLockedParameters[0].pFormat != NULL);
+//
+//
+//        m_uChannels = pInputLockedParameters[0].pFormat->nChannels;
+//        m_uBytesPerSample = (pInputLockedParameters[0].pFormat->wBitsPerSample >> 3);
+//
+//        return CXAPOBase::LockForProcess(
+//            InputLockedParameterCount,
+//            pInputLockedParameters,
+//            OutputLockedParameterCount,
+//            pOutputLockedParameters);
+//    }
+//    STDMETHOD_(void, Process)(UINT32 InputProcessParameterCount,
+//        const XAPO_PROCESS_BUFFER_PARAMETERS* pInputProcessParameters,
+//        UINT32 OutputProcessParameterCount,
+//        XAPO_PROCESS_BUFFER_PARAMETERS* pOutputProcessParameters,
+//        BOOL IsEnabled)
+//    {
+//        assert(IsLocked());
+//        assert(InputProcessParameterCount == 1);
+//        assert(OutputProcessParameterCount == 1);
+//        assert(NULL != pInputProcessParameters);
+//        assert(NULL != pOutputProcessParameters);
+//
+//
+//        XAPO_BUFFER_FLAGS inFlags = pInputProcessParameters[0].BufferFlags;
+//        XAPO_BUFFER_FLAGS outFlags = pOutputProcessParameters[0].BufferFlags;
+//
+//        // assert buffer flags are legitimate
+//        assert(inFlags == XAPO_BUFFER_VALID || inFlags == XAPO_BUFFER_SILENT);
+//        assert(outFlags == XAPO_BUFFER_VALID || outFlags == XAPO_BUFFER_SILENT);
+//
+//        // check input APO_BUFFER_FLAGS
+//        switch (inFlags)
+//        {
+//        case XAPO_BUFFER_VALID:
+//        {
+//            void* pvSrc = pInputProcessParameters[0].pBuffer;
+//            assert(pvSrc != NULL);
+//
+//            if (IsEnabled)
+//            {
+//                for (int index = 0; index < pInputProcessParameters[0].ValidFrameCount * m_uChannels; ++index)
+//                {
+//                    if (index % 2 == 0)
+//                        ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (sinf(dt) + 1.0f);
+//                    else
+//                        ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (cosf(dt) + 1.0f);
+//                }
+//            }
+//            
+//            // printf("%d\n", );
+//
+//            void* pvDst = pOutputProcessParameters[0].pBuffer;
+//            assert(pvDst != NULL);
+//
+//            memcpy(pvDst, pvSrc, pInputProcessParameters[0].ValidFrameCount * m_uChannels * m_uBytesPerSample);
+//            break;
+//        }
+//
+//        case XAPO_BUFFER_SILENT:
+//        {
+//            // All that needs to be done for this case is setting the
+//            // output buffer flag to XAPO_BUFFER_SILENT which is done below.
+//            break;
+//        }
+//
+//        }
+//
+//        // set destination valid frame count, and buffer flags
+//        pOutputProcessParameters[0].ValidFrameCount = pInputProcessParameters[0].ValidFrameCount; // set destination frame count same as source
+//        pOutputProcessParameters[0].BufferFlags = pInputProcessParameters[0].BufferFlags;     // set destination buffer flags same as source
+//
+//    }
+//};
 
 int main(int argc, char** argv)
 {
@@ -258,55 +263,54 @@ int main(int argc, char** argv)
     // if (FAILED(hr = XAudio2CreateReverb(&pXAPO, 0)))
     //     return hr;
 
-    IUnknown* pXAPO = new MyEffect();
+    EffectCircle* pEffectCircle = new EffectCircle();
 
     XAUDIO2_EFFECT_DESCRIPTOR descriptor;
     descriptor.InitialState = true;
     descriptor.OutputChannels = 2;
-    descriptor.pEffect = pXAPO;
+    descriptor.pEffect = pEffectCircle;
 
     XAUDIO2_EFFECT_CHAIN chain;
     chain.EffectCount = 1;
     chain.pEffectDescriptors = &descriptor;
 
-    XAUDIO2FX_REVERB_PARAMETERS reverbParameters;
-    reverbParameters.ReflectionsDelay = XAUDIO2FX_REVERB_DEFAULT_REFLECTIONS_DELAY * 0;
-    // reverbParameters.ReverbDelay = XAUDIO2FX_REVERB_DEFAULT_REVERB_DELAY;
-    // reverbParameters.RearDelay = XAUDIO2FX_REVERB_DEFAULT_REAR_DELAY;
-    // reverbParameters.PositionLeft = XAUDIO2FX_REVERB_DEFAULT_POSITION;
-    // reverbParameters.PositionRight = XAUDIO2FX_REVERB_DEFAULT_POSITION;
-    // reverbParameters.PositionMatrixLeft = XAUDIO2FX_REVERB_DEFAULT_POSITION_MATRIX;
-    // reverbParameters.PositionMatrixRight = XAUDIO2FX_REVERB_DEFAULT_POSITION_MATRIX;
-    // reverbParameters.EarlyDiffusion = XAUDIO2FX_REVERB_DEFAULT_EARLY_DIFFUSION;
-    // reverbParameters.LateDiffusion = XAUDIO2FX_REVERB_DEFAULT_LATE_DIFFUSION;
-    // reverbParameters.LowEQGain = XAUDIO2FX_REVERB_DEFAULT_LOW_EQ_GAIN;
-    // reverbParameters.LowEQCutoff = XAUDIO2FX_REVERB_DEFAULT_LOW_EQ_CUTOFF;
-    // reverbParameters.HighEQGain = XAUDIO2FX_REVERB_DEFAULT_HIGH_EQ_GAIN;
-    // reverbParameters.HighEQCutoff = XAUDIO2FX_REVERB_DEFAULT_HIGH_EQ_CUTOFF;
-    reverbParameters.RoomFilterFreq = XAUDIO2FX_REVERB_DEFAULT_ROOM_FILTER_FREQ;
-    reverbParameters.RoomFilterMain = XAUDIO2FX_REVERB_DEFAULT_ROOM_FILTER_MAIN;
-    reverbParameters.RoomFilterHF = XAUDIO2FX_REVERB_DEFAULT_ROOM_FILTER_HF;
-    reverbParameters.ReflectionsGain = XAUDIO2FX_REVERB_DEFAULT_REFLECTIONS_GAIN;
-    //reverbParameters.ReverbGain = XAUDIO2FX_REVERB_DEFAULT_REVERB_GAIN;
-    //reverbParameters.DecayTime = XAUDIO2FX_REVERB_DEFAULT_DECAY_TIME;
-    //reverbParameters.Density = XAUDIO2FX_REVERB_DEFAULT_DENSITY;
-    reverbParameters.RoomSize = XAUDIO2FX_REVERB_DEFAULT_ROOM_SIZE;
-    reverbParameters.WetDryMix = 100;
+    //XAUDIO2FX_REVERB_PARAMETERS reverbParameters;
+    //reverbParameters.ReflectionsDelay = XAUDIO2FX_REVERB_DEFAULT_REFLECTIONS_DELAY * 0;
+    //// reverbParameters.ReverbDelay = XAUDIO2FX_REVERB_DEFAULT_REVERB_DELAY;
+    //// reverbParameters.RearDelay = XAUDIO2FX_REVERB_DEFAULT_REAR_DELAY;
+    //// reverbParameters.PositionLeft = XAUDIO2FX_REVERB_DEFAULT_POSITION;
+    //// reverbParameters.PositionRight = XAUDIO2FX_REVERB_DEFAULT_POSITION;
+    //// reverbParameters.PositionMatrixLeft = XAUDIO2FX_REVERB_DEFAULT_POSITION_MATRIX;
+    //// reverbParameters.PositionMatrixRight = XAUDIO2FX_REVERB_DEFAULT_POSITION_MATRIX;
+    //// reverbParameters.EarlyDiffusion = XAUDIO2FX_REVERB_DEFAULT_EARLY_DIFFUSION;
+    //// reverbParameters.LateDiffusion = XAUDIO2FX_REVERB_DEFAULT_LATE_DIFFUSION;
+    //// reverbParameters.LowEQGain = XAUDIO2FX_REVERB_DEFAULT_LOW_EQ_GAIN;
+    //// reverbParameters.LowEQCutoff = XAUDIO2FX_REVERB_DEFAULT_LOW_EQ_CUTOFF;
+    //// reverbParameters.HighEQGain = XAUDIO2FX_REVERB_DEFAULT_HIGH_EQ_GAIN;
+    //// reverbParameters.HighEQCutoff = XAUDIO2FX_REVERB_DEFAULT_HIGH_EQ_CUTOFF;
+    //reverbParameters.RoomFilterFreq = XAUDIO2FX_REVERB_DEFAULT_ROOM_FILTER_FREQ;
+    //reverbParameters.RoomFilterMain = XAUDIO2FX_REVERB_DEFAULT_ROOM_FILTER_MAIN;
+    //reverbParameters.RoomFilterHF = XAUDIO2FX_REVERB_DEFAULT_ROOM_FILTER_HF;
+    //reverbParameters.ReflectionsGain = XAUDIO2FX_REVERB_DEFAULT_REFLECTIONS_GAIN;
+    ////reverbParameters.ReverbGain = XAUDIO2FX_REVERB_DEFAULT_REVERB_GAIN;
+    ////reverbParameters.DecayTime = XAUDIO2FX_REVERB_DEFAULT_DECAY_TIME;
+    ////reverbParameters.Density = XAUDIO2FX_REVERB_DEFAULT_DENSITY;
+    //reverbParameters.RoomSize = XAUDIO2FX_REVERB_DEFAULT_ROOM_SIZE;
+    //reverbParameters.WetDryMix = 100;
 
-    // if (FAILED(hr = pSourceVoice->SetEffectChain(&chain)))
-    //     return hr;
-    // 
-    
-
-    // pXAPO->Release();
+     
+    //if (FAILED(hr = pSourceVoice->SetEffectChain(&chain)))
+    //    return hr;
+    //
+    //pXAPO->Release();
 
     
     IXAudio2SourceVoice* pSourceVoice;
     if (FAILED(hr = pXAudio2->CreateSourceVoice(&pSourceVoice, (WAVEFORMATEX*)&wfx, 0, 2, 0, 0, &chain))) 
         return hr;
 
-    if (FAILED(hr = pSourceVoice->SetEffectParameters(0, &reverbParameters, sizeof(reverbParameters))))
-        return hr;
+    //if (FAILED(hr = pSourceVoice->SetEffectParameters(0, &reverbParameters, sizeof(reverbParameters))))
+    //    return hr;
 
     pSourceVoice->DisableEffect(0);
 
@@ -332,22 +336,20 @@ int main(int argc, char** argv)
         
             printf("toggled, timer: %f\n", timer);
             
-            timer = 1000.0f;
+            timer = 10.0f;
         }
         
         if (timer > 0.0f)
-            timer -= 10.0f;
+            timer -= 1.0f;
 
         dt += 0.02f;
-        //if(dt <= 1.0f)
-        //else
-        //    dt += 0.02f;
 
+        pEffectCircle->update(0.02f);
 
-        pSourceVoice->SetVolume(3 * volume * (cosf(dt/3)+1));
+        //pSourceVoice->SetVolume(3 * volume * (cosf(dt/3)+1));
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        printf("Time: %f\n", dt);//wenn dus dir anschaust. time brauche lange bis über 1.0 zu kommen, aber sobald er über 1.0 ist, läuft er 10x so schnell HASLKJDHLASHUD
+        //printf("Time: %f\n", dt);
     }
 
     return 0;
