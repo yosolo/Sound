@@ -12,6 +12,7 @@
 
 #include <math.h>
 #include <cstdio>
+#include <thread>
 
 #define fourccRIFF 'FFIR'
 #define fourccDATA 'atad'
@@ -20,7 +21,8 @@
 #define fourccXWMA 'AMWX'
 #define fourccDPDS 'sdpd'
 
-float time = 0.0f;
+float dt = 0.0f;
+float volume = 0.1f;
 
 HRESULT FindChunk(HANDLE hFile, DWORD fourcc, DWORD& dwChunkSize, DWORD& dwChunkDataPosition)
 {
@@ -165,9 +167,9 @@ public:
             for (int index = 0; index < pInputProcessParameters[0].ValidFrameCount * m_uChannels; ++index)
             {
                 if (index % 2 == 0)
-                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (sinf(time) + 1.0f);
+                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (sinf(dt) + 1.0f);
                 else
-                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (cosf(time) + 1.0f);
+                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (cosf(dt) + 1.0f);
             }
             // printf("%d\n", );
 
@@ -310,13 +312,13 @@ int main(int argc, char** argv)
 
     if (FAILED(hr = pSourceVoice->SubmitSourceBuffer(&buffer)))
         return hr;
-    
-    pSourceVoice->SetVolume(0.1f);
 
+    pSourceVoice->SetVolume(volume);
+    
     if (FAILED(hr = pSourceVoice->Start(0)))
         return hr;
 
-    float timer = 1000.0f;
+    float timer = 0.0f;
     while (1)
     {
         if (GetKeyState(VK_SPACE) < 0 && timer <= 0.0f) 
@@ -327,17 +329,25 @@ int main(int argc, char** argv)
             else
                 pSourceVoice->EnableEffect(0);
             enabled = !enabled;
-
+        
             printf("toggled, timer: %f\n", timer);
             
             timer = 1000.0f;
         }
-
+        
         if (timer > 0.0f)
-            timer -= 0.001f;
+            timer -= 10.0f;
 
-        time += 0.0001f;
-        printf("Time: %f\n", time);//wenn dus dir anschaust. time brauche lange bis über 1.0 zu kommen, aber sobald er über 1.0 ist, läuft er 10x so schnell HASLKJDHLASHUD
+        if(dt <= 1.0f)
+            dt += 0.2f;
+        else
+            dt += 0.02f;
+
+
+        pSourceVoice->SetVolume(3 * volume * (cosf(dt/3)+1));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        //printf("Time: %f\n", dt);//wenn dus dir anschaust. time brauche lange bis über 1.0 zu kommen, aber sobald er über 1.0 ist, läuft er 10x so schnell HASLKJDHLASHUD
     }
 
     return 0;
