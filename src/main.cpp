@@ -20,6 +20,8 @@
 #define fourccXWMA 'AMWX'
 #define fourccDPDS 'sdpd'
 
+float time = 0.0f;
+
 HRESULT FindChunk(HANDLE hFile, DWORD fourcc, DWORD& dwChunkSize, DWORD& dwChunkDataPosition)
 {
     HRESULT hr = S_OK;
@@ -163,9 +165,9 @@ public:
             for (int index = 0; index < pInputProcessParameters[0].ValidFrameCount * m_uChannels; ++index)
             {
                 if (index % 2 == 0)
-                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (sinf((float)index) + 1.0f);
+                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (sinf(time) + 1.0f);
                 else
-                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (cosf((float)index) + 1.0f);
+                    ((float*)pvSrc)[index] = ((float*)pvSrc)[index] * (cosf(time) + 1.0f);
             }
             // printf("%d\n", );
 
@@ -249,8 +251,6 @@ int main(int argc, char** argv)
     buffer.pAudioData = pDataBuffer;  //buffer containing audio data
     buffer.Flags = XAUDIO2_END_OF_STREAM; // tell the source voice not to expect any data after this buffer
 
-
-    // pSourceVoice->SetFrequencyRatio(1.0);
     // IUnknown* pXAPO;
     // CreateFX(__uuidof(FXReverb), &pXAPO);
     // if (FAILED(hr = XAudio2CreateReverb(&pXAPO, 0)))
@@ -311,6 +311,7 @@ int main(int argc, char** argv)
     if (FAILED(hr = pSourceVoice->SubmitSourceBuffer(&buffer)))
         return hr;
     
+    pSourceVoice->SetVolume(0.1f);
 
     if (FAILED(hr = pSourceVoice->Start(0)))
         return hr;
@@ -334,6 +335,9 @@ int main(int argc, char** argv)
 
         if (timer > 0.0f)
             timer -= 0.001f;
+
+        time += 0.0001f;
+        printf("Time: %f\n", time);//wenn dus dir anschaust. time brauche lange bis über 1.0 zu kommen, aber sobald er über 1.0 ist, läuft er 10x so schnell HASLKJDHLASHUD
     }
 
     return 0;
