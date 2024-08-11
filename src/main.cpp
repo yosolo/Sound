@@ -338,16 +338,16 @@ int main(int argc, char** argv)
         if (timer > 0.0f)
             timer -= 10.0f;
 
-        if(dt <= 1.0f)
-            dt += 0.2f;
-        else
-            dt += 0.02f;
+        dt += 0.02f;
+        //if(dt <= 1.0f)
+        //else
+        //    dt += 0.02f;
 
 
         pSourceVoice->SetVolume(3 * volume * (cosf(dt/3)+1));
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        //printf("Time: %f\n", dt);//wenn dus dir anschaust. time brauche lange bis über 1.0 zu kommen, aber sobald er über 1.0 ist, läuft er 10x so schnell HASLKJDHLASHUD
+        printf("Time: %f\n", dt);//wenn dus dir anschaust. time brauche lange bis über 1.0 zu kommen, aber sobald er über 1.0 ist, läuft er 10x so schnell HASLKJDHLASHUD
     }
 
     return 0;
